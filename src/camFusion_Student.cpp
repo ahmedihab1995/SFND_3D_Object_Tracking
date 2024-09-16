@@ -156,8 +156,50 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
     // ...
 }
 
+int findBoundingBoxIndex(const std::vector<BoundingBox>& boxes, const cv::KeyPoint& keypoint) {
+    for (size_t i = 0; i < boxes.size(); ++i) {
+        if (boxes[i].roi.contains(keypoint.pt)) {
+            return i;
+        }
+    }
+    return -1; // Not found
+}
 
 void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
 {
     // ...
+    // Create a map to count matches between previous and current bounding box indexes
+    std::map<std::pair<int, int>, int> matchCount;
+
+    // Iterate over all keypoint matches
+    for (const auto& match : matches) {
+        // Find the bounding box indexes for keypoints in previous and current frames
+        int prevBoxIdx = findBoundingBoxIndex(prevFrame.boundingBoxes, prevFrame.keypoints[match.queryIdx]);
+        int currBoxIdx = findBoundingBoxIndex(currFrame.boundingBoxes, currFrame.keypoints[match.trainIdx]);
+
+        if (prevBoxIdx != -1 && currBoxIdx != -1) {
+            // Update the match count
+            std::pair<int, int> boxPair(prevBoxIdx, currBoxIdx);
+            if (matchCount.find(boxPair) == matchCount.end()) {
+                matchCount[boxPair] = 0;
+            }
+            matchCount[boxPair]++;
+        }
+    }
+
+    // Determine the best matches based on the highest count
+    std::map<int, int> bestMatches;
+    for (const auto& count : matchCount) {
+        int prevBoxIdx = count.first.first;
+        int currBoxIdx = count.first.second;
+
+        // Update best match if not present or if the current match count is higher
+        if (bestMatches.find(prevBoxIdx) == bestMatches.end() ||
+            count.second > matchCount[std::make_pair(bestMatches[prevBoxIdx], currBoxIdx)]) {
+            bestMatches[prevBoxIdx] = currBoxIdx;
+        }
+    }
+
+    // Update the bbBestMatches map with the best matches
+    bbBestMatches = bestMatches;
 }
